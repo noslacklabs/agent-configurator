@@ -1,0 +1,4 @@
+langflow==1.13.2
+-e .
+pytest
+pytest-asyncio
