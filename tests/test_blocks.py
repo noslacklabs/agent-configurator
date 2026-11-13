@@ -29,27 +29,27 @@ def offered_tools(call) -> list[str]:
 
 def test_dropdown_lists_active_chat_configs(configurator):
     block = blocks()["llm"]()
-    config = block.update_build_config({"config_name": {"options": []}}, "", "config_name")
-    assert "demo_main" in config["config_name"]["options"]
-    assert "demo_disabled" not in config["config_name"]["options"]
+    config = block.update_build_config({"llm_name": {"options": []}}, "", "llm_name")
+    assert "demo_main" in config["llm_name"]["options"]
+    assert "demo_disabled" not in config["llm_name"]["options"]
 
 
 def test_embeddings_dropdown_lists_only_embedding_configs(configurator):
     block = blocks()["embeddings"]()
-    config = block.update_build_config({"config_name": {"options": []}}, "", "config_name")
-    assert config["config_name"]["options"] == ["demo_main"]
+    config = block.update_build_config({"llm_name": {"options": []}}, "", "llm_name")
+    assert config["llm_name"]["options"] == ["demo_main"]
 
 
 def test_dropdown_keeps_selection_when_configurator_is_down(monkeypatch):
     monkeypatch.setenv("LLM_CONFIGURATOR_URL", "http://127.0.0.1:9")
     block = blocks()["llm"]()
-    config = block.update_build_config({"config_name": {"options": ["kept"], "value": "kept"}}, "", "config_name")
-    assert config["config_name"]["options"] == ["kept"]
+    config = block.update_build_config({"llm_name": {"options": ["kept"], "value": "kept"}}, "", "llm_name")
+    assert config["llm_name"]["options"] == ["kept"]
 
 
 def test_max_tokens_is_lowered_to_the_config_cap(configurator):
     block = blocks()["llm"]()
-    block.set(config_name="demo_chatonly", max_tokens=5000)
+    block.set(llm_name="demo_chatonly", max_tokens=5000)
     assert block.build_model().max_tokens == 1024
 
 
@@ -182,3 +182,45 @@ async def test_duplicate_agent_names_are_rejected(configurator):
     graph, _ = orchestrated_flow(team, "Sequential", "demo_main", "hi")
     with pytest.raises(Exception, match="agent names must be unique"):
         await run(graph)
+
+
+# -- saved flows ----------------------------------------------------------
+
+
+def test_no_field_name_that_langflow_would_drop():
+    # Langflow JSON-parses string values of fields whose name contains "config" or
+    # "kwargs" when it loads a saved flow, and silently removes the ones that are not JSON.
+    for kind in blocks().values():
+        for item in kind.inputs:
+            assert "config" not in item.name and "kwargs" not in item.name, f"{kind.__name__}.{item.name}"
+
+
+async def test_saved_flow_keeps_its_llm_selection(configurator):
+    import uuid
+
+    from lfx.graph import Graph
+
+    graph, _ = single_agent_flow("demo_main", "hello again", agent_name="Helper")
+    saved = graph.dump(name="round trip")
+    loaded = Graph.from_payload(saved["data"], flow_id=str(uuid.uuid4()), user_id=None)
+    await run(loaded)
+    assert loaded.get_vertex("ConfiguredLLM-cwk01").params["llm_name"] == "demo_main"
+    assert chat_calls(configurator)[-1]["config"] == "demo_main"
+    assert "temperature" not in chat_calls(configurator)[-1]["body"]
+
+
+async def test_solo_run_is_marked_so_the_evaluator_can_confirm_it(configurator):
+    from agent_configurator.trace import as_report, unwrap_tool_output
+
+    def reports(message):
+        return [as_report(unwrap_tool_output(b.output)) for b in message.content_blocks if b.type == "tool_use"]
+
+    graph, parts = orchestrated_flow(TEAM, "Sequential", "demo_main", "hi", solo_agent="Writer")
+    await run(graph)
+    assert [(r["coworkai_agent"], r.get("solo")) for r in reports(parts["orchestrator"]._orchestration_result)] == [
+        ("Writer", True)
+    ]
+
+    graph, parts = orchestrated_flow(TEAM, "Router", "demo_main", "one for the writer")
+    await run(graph)
+    assert [r.get("solo") for r in reports(parts["orchestrator"]._orchestration_result)] == [None]

@@ -2,7 +2,7 @@ from agent_configurator.chat_model import ConfiguredChatModel
 from agent_configurator.client import ConfiguratorClient, ConfiguratorError
 from lfx.custom.custom_component.component import Component
 from lfx.field_typing import LanguageModel
-from lfx.io import DropdownInput, FloatInput, IntInput, Output
+from lfx.io import DropdownInput, IntInput, Output, StrInput
 
 
 class ConfiguredLLMComponent(Component):
@@ -14,9 +14,11 @@ class ConfiguredLLMComponent(Component):
     icon = "brain-circuit"
     name = "ConfiguredLLM"
 
+    # Field names must not contain "config" or "kwargs": Langflow parses such string
+    # values as JSON when it loads a flow and silently drops the ones that are not JSON.
     inputs = [
         DropdownInput(
-            name="config_name",
+            name="llm_name",
             display_name="LLM Config",
             info="Active configs from the LLM Configurator. Use the refresh button to reload the list.",
             options=[],
@@ -26,10 +28,11 @@ class ConfiguredLLMComponent(Component):
             real_time_refresh=True,
             combobox=True,
         ),
-        FloatInput(
+        StrInput(
             name="temperature",
             display_name="Temperature",
-            info="Leave empty to use the model's default.",
+            info="A number such as 0.2. Leave empty to use the model's default.",
+            value="",
             advanced=True,
         ),
         IntInput(
@@ -52,11 +55,11 @@ class ConfiguredLLMComponent(Component):
             # Keep whatever is selected so a flow still opens while the configurator is down.
             self.log(f"Could not load LLM configs: {exc}")
             return build_config
-        build_config["config_name"]["options"] = names
+        build_config["llm_name"]["options"] = names
         return build_config
 
     def build_model(self) -> LanguageModel:
-        config_name = (self.config_name or "").strip()
+        config_name = (self.llm_name or "").strip()
         if not config_name:
             msg = "Pick an LLM config. Use the refresh button if the list is empty."
             raise ValueError(msg)
@@ -68,10 +71,17 @@ class ConfiguredLLMComponent(Component):
                 self.log(f"Max Tokens {max_tokens} is above this config's cap, using {cap}.")
                 max_tokens = cap
 
-        temperature = self.temperature
+        temperature = None
+        raw_temperature = str(self.temperature if self.temperature is not None else "").strip()
+        if raw_temperature:
+            try:
+                temperature = float(raw_temperature)
+            except ValueError:
+                msg = f"Temperature must be a number, got '{raw_temperature}'."
+                raise ValueError(msg) from None
         model = ConfiguredChatModel(
             config_name=config_name,
-            temperature=float(temperature) if temperature not in (None, "") else None,
+            temperature=temperature,
             max_tokens=max_tokens or None,
         )
         self.status = f"LLM config: {config_name}"

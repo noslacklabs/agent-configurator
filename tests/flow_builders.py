@@ -38,7 +38,7 @@ def single_agent_flow(config_name: str = "", user_input: str = "", **agent_field
     chat_input = ChatInput(_id="ChatInput-cwk01")
     chat_input.set(input_value=user_input)
     llm = kinds["llm"](_id="ConfiguredLLM-cwk01")
-    llm.set(config_name=config_name)
+    llm.set(llm_name=config_name)
     agent = kinds["agent"](_id="CoworkAIAgent-cwk01")
     fields = {"agent_name": "Assistant", "agent_role": "Answers questions.", **agent_fields}
     agent.set(model=llm.build_model, input_value=chat_input.message_response, **fields)
@@ -59,7 +59,7 @@ def orchestrated_flow(
     chat_input = ChatInput(_id="ChatInput-cwk01")
     chat_input.set(input_value=user_input)
     llm = kinds["llm"](_id="ConfiguredLLM-cwk01")
-    llm.set(config_name=config_name)
+    llm.set(llm_name=config_name)
 
     agent_blocks = []
     for index, fields in enumerate(agents, 1):

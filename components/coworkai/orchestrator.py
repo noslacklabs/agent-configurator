@@ -183,7 +183,10 @@ class OrchestratorAgentComponent(Component):
             available = ", ".join(self._display(item) for item in tools)
             msg = f"{self._label()}: solo agent '{wanted}' is not connected. Connected agents: {available}"
             raise ValueError(msg)
-        report = await self._call(tool, task)
+        # "solo" lets the evaluator confirm the switch really took effect. If the tweak that sets
+        # solo_agent stops matching this block, the flow would otherwise run its normal pattern
+        # and be scored under one agent's name.
+        report = {**(await self._call(tool, task)), "solo": True}
         return report["output"], [self._step(tool.name, report)]
 
     async def _run_sequential(self, tools: list, task: str):

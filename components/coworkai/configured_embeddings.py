@@ -16,7 +16,7 @@ class ConfiguredEmbeddingsComponent(Component):
 
     inputs = [
         DropdownInput(
-            name="config_name",
+            name="llm_name",
             display_name="LLM Config",
             info="Active configs that include an embedding model. Use the refresh button to reload the list.",
             options=[],
@@ -45,11 +45,11 @@ class ConfiguredEmbeddingsComponent(Component):
         except ConfiguratorError as exc:
             self.log(f"Could not load LLM configs: {exc}")
             return build_config
-        build_config["config_name"]["options"] = names
+        build_config["llm_name"]["options"] = names
         return build_config
 
     def build_embeddings(self) -> Embeddings:
-        config_name = (self.config_name or "").strip()
+        config_name = (self.llm_name or "").strip()
         if not config_name:
             msg = "Pick an LLM config that has an embedding model."
             raise ValueError(msg)

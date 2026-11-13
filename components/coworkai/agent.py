@@ -1,6 +1,7 @@
 from agent_configurator.chat_model import ConfiguredChatModel
 from agent_configurator.trace import build_report, slugify
-from lfx.base.tools.component_tool import ComponentStructuredTool, _build_output_async_function
+from langchain_core.tools import StructuredTool
+from lfx.base.tools.component_tool import _build_output_async_function
 from lfx.base.tools.constants import TOOL_OUTPUT_NAME
 from lfx.components.models_and_agents.agent import AgentComponent
 from lfx.io import HandleInput, MultilineInput, Output, StrInput
@@ -92,16 +93,19 @@ class CoworkAIAgentComponent(AgentComponent):
         message = await self.message_response()
         return Data(data=build_report(self._label(), task_text, message.text or "", message.content_blocks))
 
-    def _agent_tool(self) -> ComponentStructuredTool:
+    def _agent_tool(self) -> StructuredTool:
         name = slugify(self._label())
         description = (self.agent_role or "").strip() or f"Ask the {self._label()} agent to handle a task."
-        return ComponentStructuredTool(
+        # A plain StructuredTool, not Langflow's ComponentStructuredTool: that class re-checks the
+        # block's saved Tool Mode settings on every call and refuses blocks that are not in Tool
+        # Mode. Here the agent is wired through its own Agent output, so there are no such
+        # settings. The run still validates the executing user (inside the function below).
+        return StructuredTool(
             name=name,
             description=description,
             coroutine=_build_output_async_function(
                 self, self.run_for_orchestrator, self.get_event_manager(), TOOL_OUTPUT_NAME
             ),
-            source_component=self,
             args_schema=AgentTask,
             handle_tool_error=True,
             callbacks=self.get_langchain_callbacks(),
@@ -114,7 +118,7 @@ class CoworkAIAgentComponent(AgentComponent):
             },
         )
 
-    async def as_agent(self) -> ComponentStructuredTool:
+    async def as_agent(self) -> StructuredTool:
         tool = self._agent_tool()
         self.status = f"Agent '{self._label()}' is ready for an Orchestrator."
         return tool
